@@ -42,11 +42,13 @@ The file to parse. This should be the WordPress export XML file that you downloa
 
 The output directory where Markdown and image files will be saved.
 
-### --types
+### --type
 - Type: Array
 - Default: `post`
 
-The types of WordPress posts to save.
+The types of WordPress posts to save. Comma separated list.
+
+    post,page,resource
 
 ### --yearmonthfolders
 

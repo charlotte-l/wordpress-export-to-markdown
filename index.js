@@ -5,15 +5,18 @@ const path = require('path');
 const request = require('request');
 const turndown = require('turndown');
 const xml2js = require('xml2js');
+const readline = require('readline');
 
 // global so various functions can access arguments
-let argv;
+let argv, types;
 
 function init() {
+	var date = new Date().toISOString().slice(0, 10);
 	argv = minimist(process.argv.slice(2), {
 		string: [
 			'input',
-			'output'
+			'output',
+			'type'
 		],
 		boolean: [
 			'yearmonthfolders',
@@ -24,14 +27,15 @@ function init() {
 			'addcontentimages'
 		],
 		default: {
-			input: 'export.xml',
-			output: 'output',
+			input: '../adenincms.WordPress.'+date+'.xml',
+			output: '../wordpress-export-'+date,
 			yearmonthfolders: false,
 			yearfolders: false,
-			postfolders: true,
+			postfolders: false,
 			prefixdate: false,
 			saveimages: true,
-			addcontentimages: false
+			addcontentimages: false,
+			type: types,
 		}
 	});
 
@@ -45,6 +49,7 @@ function readFile(path) {
 	} catch (ex) {
 		console.log('Unable to read file.');
 		console.log(ex.message);
+		process.exit();
 	}
 }
 
@@ -90,49 +95,60 @@ function addContentImages(data, images) {
 	let regex = (/<img[^>]*src="(.+?\.(?:gif|jpg|png))"[^>]*>/gi);
 	let match;
 
-	getItemsOfType(data, 'post').forEach(post => {
-		let postId = post.post_id[0];
-		let postContent = post.encoded[0];
-		let postLink = post.link[0];
-
-		// reset lastIndex since we're reusing the same regex object
-		regex.lastIndex = 0;
-		while ((match = regex.exec(postContent)) !== null) {
-			// base the matched image URL relative to the post URL
-			let url = new URL(match[1], postLink).href;
-
-			// add image if it hasn't already been added for this post
-			let exists = images.some(image => image.postId === postId && image.url === url);
-			if (!exists) {
-				images.push({
-					id: -1,
-					postId: postId,
-					url: url
-				});
-				console.log('Scraped ' + url + '.');
+	argv.type.forEach(type => {
+		getItemsOfType(data, type).forEach(post => {
+			let postId = post.post_id[0];
+			let postContent = post.encoded[0];
+			let postLink = post.link[0];
+	
+			// reset lastIndex since we're reusing the same regex object
+			regex.lastIndex = 0;
+			while ((match = regex.exec(postContent)) !== null) {
+				// base the matched image URL relative to the post URL
+				let url = new URL(match[1], postLink).href;
+	
+				// add image if it hasn't already been added for this post
+				let exists = images.some(image => image.postId === postId && image.url === url);
+				if (!exists) {
+					images.push({
+						id: -1,
+						postId: postId,
+						url: url
+					});
+					console.log('Scraped ' + url + '.');
+				}
 			}
-		}
-	});	
+		});
+	});
 }
 
 function collectPosts(data) {
 	// this is passed into getPostContent() for the markdown conversion
 	turndownService = initTurndownService();
 
-	return getItemsOfType(data, 'post')
-		.map(post => ({
-			// meta data isn't written to file, but is used to help with other things
-			meta: {
-				id: getPostId(post),
-				slug: getPostSlug(post),
-				coverImageId: getPostCoverImageId(post)
-			},
-			frontmatter: {
-				title: getPostTitle(post),
-				date: getPostDate(post)
-			},
-			content: getPostContent(post, turndownService)
-		}));
+	var items = [];
+	var tempItems;
+
+	argv.type.forEach(type => {
+		tempItems = getItemsOfType(data, type)
+			.map(post => ({
+				// meta data isn't written to file, but is used to help with other things
+				meta: {
+					id: getPostId(post),
+					type: type,
+					slug: getPostSlug(post),
+					coverImageId: getPostCoverImageId(post)
+				},
+				frontmatter: {
+					title: getPostTitle(post),
+					date: getPostDate(post)
+				},
+				content: getPostContent(post, turndownService)
+			}));
+			items = items.concat(tempItems);
+	});
+
+	return items;
 }
 
 function initTurndownService() {
@@ -199,7 +215,6 @@ function getPostId(post) {
 }
 
 function getPostCoverImageId(post) {
-	if (post.postmeta === undefined) return;
 	let postmeta = post.postmeta.find(postmeta => postmeta.meta_key[0] === '_thumbnail_id');
 	let id = postmeta ? postmeta.meta_value[0] : undefined;
 	return id;
@@ -210,7 +225,7 @@ function getPostSlug(post) {
 }
 
 function getPostTitle(post) {
-	return post.title[0].trim();
+	return post.title[0];
 }
 
 function getPostDate(post) {
@@ -282,7 +297,7 @@ function writeFiles(posts) {
 				const imageDir = path.join(postDir, 'images');
 				createDir(imageDir);
 				writeImageFile(imageUrl, imageDir, delay);
-				delay += 25;
+				delay += 250;
 			});
 		}
 	});
@@ -343,7 +358,7 @@ function createDir(dir) {
 }
 
 function getPostDir(post) {
-	let dir = argv.output;
+	let dir = path.join(argv.output, post.meta.type);
 	let dt = luxon.DateTime.fromISO(post.frontmatter.date);
 
 	if (argv.yearmonthfolders) {
@@ -377,5 +392,16 @@ function getPostFilename(post) {
 	}
 }
 
-// it's go time!
-init();
+// Figure out what user wants
+var rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+rl.prompt();
+rl.question(`What post types do you want to convert? Enter values separated by commas, i.e: post,page,glossary_article\n`, (type) => {
+	types = type.split(',');
+
+	// it's go time!
+	init();
+	rl.close();
+});

@@ -12,9 +12,13 @@ You'll need:
 - [Node.js](https://nodejs.org/) v10.12 or later
 - Your [WordPress export file](https://codex.wordpress.org/Tools_Export_Screen)
 
+By default, the app will look for a WordPress export file from today in the folder above it's own. You can tell it which export file to use by passing the --output argument at the command line (see below).
+
 Open your terminal to this package's directory. Run `npm install` and then `node index.js`.
 
-This will create an `/output` folder filled with your posts and images.
+You'll be prompted to enter a comma separated list of the post types you want to convert.
+
+This will create a `/wordpress-export-YYYY-MM-DD` folder filled with your posts and images (with subfolders for post types).
 
 ## Customization
 
@@ -37,6 +41,12 @@ The file to parse. This should be the WordPress export XML file that you downloa
 - Default: `output`
 
 The output directory where Markdown and image files will be saved.
+
+### --types
+- Type: Array
+- Default: `post`
+
+The types of WordPress posts to save.
 
 ### --yearmonthfolders
 
